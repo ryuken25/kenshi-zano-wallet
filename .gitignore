@@ -5,6 +5,8 @@ dist-ssr/
 .DS_Store
 
 # build outputs
+*.tsbuildinfo
+tsconfig.tsbuildinfo
 android/
 ios/
 src-tauri/target/
