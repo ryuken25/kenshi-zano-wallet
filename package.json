@@ -1,0 +1,38 @@
+{
+  "name": "kenshi-zano-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kenshi — a stable, multi-asset Zano wallet (Pearl-parity + multi-send, merge, multi-node).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 4173",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit",
+    "icons": "node scripts/generate-icons.mjs",
+    "e2e": "playwright test",
+    "cap:sync": "cap sync android",
+    "cap:apk": "cd android && ./gradlew assembleDebug",
+    "tauri": "tauri",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^2.1.4"
+  }
+}

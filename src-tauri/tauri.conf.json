@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Kenshi",
+  "version": "0.1.0",
+  "identifier": "id.kenshi.zano.wallet",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Kenshi — Zano Wallet",
+        "width": 480,
+        "height": 880,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: ws: wss:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "../public/icons/icon-128.png",
+      "../public/icons/icon-256.png",
+      "../public/icons/icon-512.png"
+    ],
+    "resources": [],
+    "externalBin": []
+  },
+  "plugins": {
+    "shell": {
+      "open": false
+    }
+  }
+}

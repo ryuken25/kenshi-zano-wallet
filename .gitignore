@@ -1,0 +1,27 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+
+# build outputs
+android/
+ios/
+src-tauri/target/
+src-tauri/gen/
+
+# playwright
+test-results/
+playwright-report/
+/blob-report/
+.cache/
+
+# logs
+*.log
+npm-debug.log*
+
+# never commit secrets / keystores
+*.keystore
+*.jks
+.env
+.env.*
