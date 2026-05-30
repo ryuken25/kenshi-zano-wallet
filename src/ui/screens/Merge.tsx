@@ -1,27 +1,47 @@
 /**
- * Merge / consolidation (§2.3). Pick a target + asset + source wallets; the planner
- * builds a per-wallet breakdown (moved / fee / dev tip), excludes under-funded
- * wallets with a clear message, and signs each wallet's tx sequentially so one
- * failure never blocks the others.
+ * Merge / consolidation (§2.3 + "merge all assets").
+ *
+ * Pick a target + source wallets, then either consolidate ONE chosen asset or
+ * ALL assets (Zano + every Confidential Asset like FUSD) in one signed tx per
+ * wallet. This is a MOVE, not a swap — each token is sent as itself to the target.
+ * Builds a per-wallet breakdown, excludes under-funded wallets with a clear
+ * message, and signs each wallet's tx sequentially so one failure never blocks
+ * the others.
  */
 import { useState } from "react";
 import { useStore } from "../store";
 import { CoinSelector, Field } from "../components";
 import { fromAtomic } from "../../core/amounts";
-import { buildMergePlan, type MergeSourceState, type MergePlan } from "../../core/merge";
-import { DEFAULT_FEE_ATOMIC, ZANO_ASSET_ID } from "../../core/constants";
-import type { Asset } from "../../core/types";
+import {
+  buildMergePlan,
+  buildMergeAllPlan,
+  type MergeSourceState,
+  type MergeSourceFull,
+  type MergeExclusion,
+} from "../../core/merge";
+import { DEFAULT_FEE_ATOMIC, DEV_TIP_ATOMIC, ZANO_ASSET_ID } from "../../core/constants";
+import type { Asset, TransferPlan } from "../../core/types";
+
+/** Normalized preview row covering both single-asset and all-assets modes. */
+interface Row {
+  accountId: string;
+  label: string;
+  plan: TransferPlan;
+  moved: { ticker: string; amount: bigint; decimalPoint: number }[];
+}
 
 export function Merge() {
-  const { accounts, assets, activeId, wallet, setActive, refresh, toast } = useStore();
-  const [targetId, setTargetId] = useState(activeId ?? accounts[0]?.id ?? "");
+  const { accounts, assets, wallet, setActive, refresh, toast } = useStore();
+  const [targetId, setTargetId] = useState(accounts[0]?.id ?? "");
   const [assetId, setAssetId] = useState(ZANO_ASSET_ID);
+  const [allAssets, setAllAssets] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [plan, setPlan] = useState<MergePlan | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [excluded, setExcluded] = useState<MergeExclusion[]>([]);
   const [busy, setBusy] = useState(false);
 
   const target = accounts.find((a) => a.id === targetId);
-  const decimalsOf = (id: string) => assets.find((a: Asset) => a.assetId === id)?.decimalPoint ?? 12;
+  const assetOf = (id: string) => assets.find((a: Asset) => a.assetId === id);
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -31,27 +51,62 @@ export function Merge() {
     });
 
   /**
-   * Build a preview. NOTE: per-wallet unlocked balances require querying each
-   * wallet's RPC. In this build the wallet-RPC is single-active-wallet, so the
-   * preview uses the currently-loaded `assets` for the active wallet as a stand-in
-   * for each selected source; a multi-wallet daemon connection would query each.
-   * The planning math (exclusion, moved amount) is exact regardless of source.
+   * Build a preview. NOTE: per-wallet balances require querying each wallet's RPC.
+   * In this build the wallet-RPC is single-active-wallet, so the preview uses the
+   * currently-loaded `assets` as the per-source figure; a multi-wallet daemon
+   * connection would query each source. The planning math is exact either way.
    */
   const preview = () => {
     if (!target) {
       toast("Pilih target dulu.", "err");
       return;
     }
-    const nativeUnlocked = assets.find((a) => a.assetId === ZANO_ASSET_ID)?.unlockedBalance ?? 0n;
-    const assetUnlocked = assets.find((a) => a.assetId === assetId)?.unlockedBalance ?? 0n;
-    const sources: MergeSourceState[] = accounts
-      .filter((a) => selected.has(a.id))
-      .map((a) => ({
+    const sourceAccts = accounts.filter((a) => selected.has(a.id));
+    if (sourceAccts.length === 0) {
+      toast("Pilih minimal satu wallet sumber.", "err");
+      return;
+    }
+
+    if (allAssets) {
+      // Consolidate every asset the wallet holds.
+      const sources: MergeSourceFull[] = sourceAccts.map((a) => ({
         accountId: a.id,
         label: a.label,
-        unlockedAsset: assetUnlocked,
-        unlockedNativeZano: nativeUnlocked,
+        assets: assets.map((as) => ({
+          assetId: as.assetId,
+          ticker: as.ticker,
+          decimalPoint: as.decimalPoint,
+          unlocked: as.unlockedBalance,
+        })),
       }));
+      const p = buildMergeAllPlan({
+        targetAccountId: targetId,
+        targetAddress: target.primaryAddress,
+        fee: DEFAULT_FEE_ATOMIC,
+        sources,
+      });
+      setRows(
+        p.participants.map((x) => ({
+          accountId: x.accountId,
+          label: x.label,
+          plan: x.plan,
+          moved: x.moved.map((m) => ({ ticker: m.ticker, amount: m.amount, decimalPoint: m.decimalPoint })),
+        })),
+      );
+      setExcluded(p.excluded);
+      for (const ex of p.excluded) toast(ex.reason, "err");
+      return;
+    }
+
+    // Single chosen asset.
+    const chosen = assetOf(assetId);
+    const nativeUnlocked = assetOf(ZANO_ASSET_ID)?.unlockedBalance ?? 0n;
+    const sources: MergeSourceState[] = sourceAccts.map((a) => ({
+      accountId: a.id,
+      label: a.label,
+      unlockedAsset: chosen?.unlockedBalance ?? 0n,
+      unlockedNativeZano: nativeUnlocked,
+    }));
     const p = buildMergePlan({
       targetAccountId: targetId,
       targetAddress: target.primaryAddress,
@@ -59,46 +114,68 @@ export function Merge() {
       fee: DEFAULT_FEE_ATOMIC,
       sources,
     });
-    setPlan(p);
+    setRows(
+      p.participants.map((x) => ({
+        accountId: x.accountId,
+        label: x.label,
+        plan: x.plan,
+        moved: [
+          { ticker: chosen?.ticker ?? "?", amount: x.movedAmount, decimalPoint: chosen?.decimalPoint ?? 12 },
+        ],
+      })),
+    );
+    setExcluded(p.excluded);
     for (const ex of p.excluded) toast(ex.reason, "err");
   };
 
   const execute = async () => {
-    if (!plan || plan.participants.length === 0) return;
-    if (!confirm(`Jalankan merge ${plan.participants.length} wallet ke ${target?.label}?`)) return;
+    if (!rows || rows.length === 0) return;
+    if (!confirm(`Jalankan merge ${rows.length} wallet ke ${target?.label}?`)) return;
     setBusy(true);
     let okCount = 0;
     // Sequential: one failure must not block/corrupt the others (§2.3).
-    for (const p of plan.participants) {
+    for (const r of rows) {
       try {
-        await setActive(p.accountId); // point wallet RPC at this source
-        await wallet.sendTransfer(p.plan); // one signed tx per wallet
+        await setActive(r.accountId); // point wallet RPC at this source
+        await wallet.sendTransfer(r.plan); // one signed tx per wallet (all its assets)
         okCount++;
-        toast(`${p.label}: terkirim`);
+        toast(`${r.label}: terkirim`);
       } catch (e) {
-        toast(`${p.label}: gagal — ${(e as Error).message}`, "err");
+        toast(`${r.label}: gagal — ${(e as Error).message}`, "err");
       }
     }
     setBusy(false);
-    toast(`Merge selesai: ${okCount}/${plan.participants.length} berhasil.`);
+    toast(`Merge selesai: ${okCount}/${rows.length} berhasil.`);
     await refresh();
-    setPlan(null);
+    setRows(null);
+    setExcluded([]);
   };
-
-  const dec = decimalsOf(assetId);
 
   return (
     <div className="screen">
       <h2>Merge / Konsolidasi</h2>
+      <p className="muted small">Memindahkan token ke 1 akun — bukan swap. Tiap token tetap jenisnya.</p>
       <div className="card">
         <Field label="Target (tujuan)">
           <select className="input" value={targetId} onChange={(e) => setTargetId(e.target.value)} data-testid="merge-target">
             {accounts.map((a) => (<option key={a.id} value={a.id}>{a.label}</option>))}
           </select>
         </Field>
-        <Field label="Aset">
-          <CoinSelector assets={assets} value={assetId} onChange={setAssetId} />
-        </Field>
+
+        <label className="tip-row" data-testid="merge-all-row">
+          <input type="checkbox" checked={allAssets} onChange={(e) => setAllAssets(e.target.checked)} data-testid="merge-all-checkbox" />
+          <span>
+            <strong>Gabungkan semua aset</strong>
+            <br />
+            <span className="muted small">Pindahkan Zano + semua Confidential Asset sekaligus (1 transaksi per wallet).</span>
+          </span>
+        </label>
+
+        {!allAssets && (
+          <Field label="Aset">
+            <CoinSelector assets={assets} value={assetId} onChange={setAssetId} />
+          </Field>
+        )}
 
         <p className="field-label">Wallet sumber</p>
         <ul className="merge-sources">
@@ -114,7 +191,7 @@ export function Merge() {
         <button className="btn" onClick={preview} data-testid="merge-preview-btn">Tinjau</button>
       </div>
 
-      {plan && (
+      {rows && (
         <div className="card" data-testid="merge-preview">
           <h3>Ringkasan per-wallet</h3>
           <table className="breakdown">
@@ -122,23 +199,27 @@ export function Merge() {
               <tr><th>Wallet</th><th>Dipindah</th><th>Fee</th><th>Tip</th></tr>
             </thead>
             <tbody>
-              {plan.participants.map((p) => (
-                <tr key={p.accountId}>
-                  <td>{p.label}</td>
-                  <td>{fromAtomic(p.movedAmount, dec)}</td>
-                  <td>{fromAtomic(p.fee, 12)}</td>
-                  <td>{fromAtomic(p.devTip, 12)}</td>
+              {rows.map((r) => (
+                <tr key={r.accountId}>
+                  <td>{r.label}</td>
+                  <td>
+                    {r.moved.map((m, i) => (
+                      <div key={i}>{fromAtomic(m.amount, m.decimalPoint)} {m.ticker}</div>
+                    ))}
+                  </td>
+                  <td>{fromAtomic(DEFAULT_FEE_ATOMIC, 12)}</td>
+                  <td>{fromAtomic(DEV_TIP_ATOMIC, 12)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {plan.excluded.length > 0 && (
+          {excluded.length > 0 && (
             <div className="excluded" data-testid="merge-excluded">
               <h4>Dilewati</h4>
-              <ul>{plan.excluded.map((e) => <li key={e.accountId} className="error-text">{e.reason}</li>)}</ul>
+              <ul>{excluded.map((e) => <li key={e.accountId} className="error-text">{e.reason}</li>)}</ul>
             </div>
           )}
-          {plan.participants.length > 0 && (
+          {rows.length > 0 && (
             <button className="btn primary" onClick={execute} disabled={busy} data-testid="merge-execute">
               {busy ? "Memproses…" : "Jalankan merge"}
             </button>

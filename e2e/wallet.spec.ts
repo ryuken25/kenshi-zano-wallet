@@ -112,8 +112,9 @@ test("Kenshi wallet walkthrough", async ({ page }) => {
   await page.getByTestId("add-row").click();
   await shot(page, "07-multisend-from-wallet-tip");
 
-  // 8. Merge preview with per-wallet breakdown + exclusion handling.
+  // 8. Merge ALL assets (Zano + Confidential Assets) to one account — not a swap.
   await page.getByTestId("tab-merge").click();
+  await page.getByTestId("merge-all-checkbox").check(); // consolidate every token
   // Select a source (the non-target account).
   const srcCheckbox = page.locator('[data-testid^="merge-src-"]').first();
   await srcCheckbox.check();

@@ -61,10 +61,17 @@ meniru alur "Pearl Wallet", tetapi seluruh operasi uang memakai RPC asli Zano.
 - Centang tip jika mau → **Tinjau & kirim** → muncul ringkasan semua output
   (termasuk baris tip) sebelum 1 transaksi ditandatangani.
 
-### 7. Merge / konsolidasi
-- Tab **Merge** → pilih **Target**, **Aset**, dan centang **wallet sumber**.
-- **Tinjau** → muncul tabel rincian per-wallet (dipindah / fee / tip). Wallet yang
-  dananya kurang akan **dilewati dengan pesan jelas**.
+### 7. Merge / konsolidasi (bukan swap)
+- Tab **Merge** → pilih **Target** dan centang **wallet sumber**.
+- Pilih mode:
+  - **Satu aset:** pilih aset di selector lalu **Tinjau**.
+  - **Gabungkan semua aset:** centang opsi ini untuk memindahkan **Zano + semua
+    Confidential Asset (mis. FUSD) sekaligus** — tetap **1 transaksi per wallet**.
+- **Merge = memindahkan**, bukan **swap/konversi**. Tiap token tetap jenisnya
+  (Zano tetap Zano, FUSD tetap FUSD); hanya dikumpulkan ke satu akun target.
+- **Tinjau** → muncul tabel rincian per-wallet (aset yang dipindah / fee / tip).
+  Wallet yang native-nya kurang dari `0.01 ZANO + fee` akan **dilewati dengan pesan
+  jelas**.
 - **Jalankan merge** → tiap wallet diproses **berurutan**; satu gagal tidak
   membatalkan yang lain.
 
